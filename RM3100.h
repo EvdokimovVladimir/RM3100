@@ -198,13 +198,6 @@ struct RM3100AxisMeasurement
     uint32_t rawWord;
     /** @brief Signed 24-bit value sign-extended to int32_t. */
     int32_t raw;
-    /**
-     * @brief Calibrated field in pT encoded as two's-complement bits in uint32_t.
-     *
-     * This exists to satisfy use-cases where unsigned transport/storage is required.
-     * For normal numeric calculations use picoTesla.
-     */
-    uint32_t picoTeslaUnsigned;
     /** @brief Calibrated field in pT as signed int32_t. */
     int32_t picoTesla;
 };
@@ -222,6 +215,8 @@ struct MagField3
     RM3100AxisMeasurement z;
     /** @brief STATUS register snapshot near the read operation. */
     uint8_t status;
+    /** @brief |B| = sqrt(Bx^2 + By^2 + Bz^2) in pT. */
+    uint32_t magnitudePicoTesla;
     /** @brief Timestamp from millis() when sample structure was filled. */
     uint32_t timestampMs;
     /** @brief True when sample read and conversion completed successfully. */
@@ -384,10 +379,14 @@ public:
     static uint32_t pack24(const uint8_t *data);
     /** @brief Sign-extend packed 24-bit two's-complement word to int32_t. */
     static int32_t rawWordToSigned(uint32_t rawWord);
+    /** @brief |B| = sqrt(Bx^2 + By^2 + Bz^2) in pT. */
+    static uint32_t magnitudeFromComponentsPicoTesla(int32_t bx, int32_t by, int32_t bz);
 
 private:
     static int32_t clampInt64ToInt32(int64_t value);
     static int64_t divideRounded(int64_t numerator, int64_t denominator);
+    static uint32_t absInt32ToUint32(int32_t value);
+    static uint32_t integerSqrtU64(uint64_t value);
 
     void configureDrdyPin();
     void updateCachedRegister(uint8_t reg, uint8_t value);

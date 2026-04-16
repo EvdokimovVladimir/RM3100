@@ -9,7 +9,6 @@ RM3100AxisMeasurement makeAxisMeasurement(uint32_t rawWord, int32_t rawCounts, i
     axis.rawWord = rawWord;
     axis.raw = rawCounts;
     axis.picoTesla = picoTesla;
-    axis.picoTeslaUnsigned = static_cast<uint32_t>(picoTesla);
     return axis;
 }
 }
@@ -446,6 +445,7 @@ bool RM3100Class::readMeasurementWords(uint32_t &mx, uint32_t &my, uint32_t &mz)
 bool RM3100Class::read3(MagField3 &field, bool waitForReady, uint32_t timeoutMs)
 {
     field.status = 0;
+    field.magnitudePicoTesla = 0;
     field.timestampMs = millis();
     field.success = false;
     field.x = makeAxisMeasurement(0, 0, 0);
@@ -476,6 +476,7 @@ bool RM3100Class::read3(MagField3 &field, bool waitForReady, uint32_t timeoutMs)
     field.x = makeAxisMeasurement(mx, rawX, applyCalibration(AXIS_INDEX_X, rawX));
     field.y = makeAxisMeasurement(my, rawY, applyCalibration(AXIS_INDEX_Y, rawY));
     field.z = makeAxisMeasurement(mz, rawZ, applyCalibration(AXIS_INDEX_Z, rawZ));
+    field.magnitudePicoTesla = magnitudeFromComponentsPicoTesla(field.x.picoTesla, field.y.picoTesla, field.z.picoTesla);
     field.status = readStatus();
     field.timestampMs = millis();
     field.success = true;
@@ -565,6 +566,60 @@ int64_t RM3100Class::divideRounded(int64_t numerator, int64_t denominator)
     }
 
     return (numerator + bias) / denominator;
+}
+
+uint32_t RM3100Class::absInt32ToUint32(int32_t value)
+{
+    if (value >= 0)
+    {
+        return static_cast<uint32_t>(value);
+    }
+
+    if (value == INT32_MIN)
+    {
+        return 2147483648UL;
+    }
+
+    return static_cast<uint32_t>(-value);
+}
+
+uint32_t RM3100Class::integerSqrtU64(uint64_t value)
+{
+    // Bit-by-bit integer square root. Result is floor(sqrt(value)).
+    uint64_t result = 0;
+    uint64_t bit = 1ULL << 62;
+
+    while (bit > value)
+    {
+        bit >>= 2;
+    }
+
+    while (bit != 0)
+    {
+        if (value >= result + bit)
+        {
+            value -= (result + bit);
+            result = (result >> 1) + bit;
+        }
+        else
+        {
+            result >>= 1;
+        }
+
+        bit >>= 2;
+    }
+
+    return static_cast<uint32_t>(result);
+}
+
+uint32_t RM3100Class::magnitudeFromComponentsPicoTesla(int32_t bx, int32_t by, int32_t bz)
+{
+    const uint64_t x = static_cast<uint64_t>(absInt32ToUint32(bx));
+    const uint64_t y = static_cast<uint64_t>(absInt32ToUint32(by));
+    const uint64_t z = static_cast<uint64_t>(absInt32ToUint32(bz));
+
+    const uint64_t sum = (x * x) + (y * y) + (z * z);
+    return integerSqrtU64(sum);
 }
 
 void RM3100Class::configureDrdyPin()

@@ -71,5 +71,7 @@ void loop()
     Serial.print(",");
     Serial.print(mf.y.picoTesla);
     Serial.print(",");
-    Serial.println(mf.z.picoTesla);
+    Serial.print(mf.z.picoTesla);
+    Serial.print(" |B|=");
+    Serial.println(mf.magnitudePicoTesla);
 }
