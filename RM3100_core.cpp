@@ -1,21 +1,7 @@
-#include "RM3100.h"
-
-namespace
-{
-// Unified helper to fill per-axis measurement payload.
-RM3100AxisMeasurement makeAxisMeasurement(uint32_t rawWord, int32_t rawCounts, int32_t picoTesla)
-{
-    RM3100AxisMeasurement axis;
-    axis.rawWord = rawWord;
-    axis.raw = rawCounts;
-    axis.picoTesla = picoTesla;
-    return axis;
-}
-}
+#include "RM3100_private.h"
 
 RM3100Class RM3100;
 
-// Constructor keeps driver detached from buses and sets datasheet defaults.
 RM3100Class::RM3100Class()
     : _busType(BUS_NONE),
       _spi(0),
@@ -164,7 +150,6 @@ bool RM3100Class::writeRegisters(uint8_t reg, const uint8_t *data, size_t length
         break;
     }
 
-    // Keep software cache synchronized for CCX/CCY/CCZ writes.
     if (ok)
     {
         updateCachedRegisters(reg, data, length);
@@ -210,14 +195,12 @@ bool RM3100Class::setCycleCountAll(uint16_t cycleCount)
 
 bool RM3100Class::singleMeasurement(uint8_t axisMask)
 {
-    // POLL payload uses only PMX/PMY/PMZ bits.
     uint8_t value = static_cast<uint8_t>(axisMask & RM3100_AXIS_ALL);
     return writeRegister(RM3100_POLL, value);
 }
 
 bool RM3100Class::startContinuous(uint8_t axisMask, bool drdyWhenAllAxes)
 {
-    // CMM payload includes axis bits plus START and optional DRDM behavior.
     uint8_t cmmValue = static_cast<uint8_t>((axisMask & RM3100_AXIS_ALL) | RM3100_CMM_START);
     if (drdyWhenAllAxes)
     {
@@ -286,7 +269,6 @@ bool RM3100Class::waitForDataReady(uint32_t timeoutMs)
         {
             return false;
         }
-        // Cooperative polling loop to avoid hot spin.
         delay(1);
     }
 
@@ -315,7 +297,6 @@ bool RM3100Class::writeBIST(uint8_t value)
 
 bool RM3100Class::runBuiltInSelfTest(uint8_t axisMask, uint8_t bistConfig, uint32_t timeoutMs, uint8_t *bistResult)
 {
-    // STE bit must be set for the next POLL command to run BIST.
     uint8_t config = static_cast<uint8_t>(bistConfig | RM3100_BIST_STE);
 
     if (!writeBIST(config))
@@ -339,7 +320,6 @@ bool RM3100Class::runBuiltInSelfTest(uint8_t axisMask, uint8_t bistConfig, uint3
         *bistResult = result;
     }
 
-    // Restore previous BIST mode with STE cleared.
     writeBIST(static_cast<uint8_t>(config & ~RM3100_BIST_STE));
 
     return (result & axisMask) == (axisMask & RM3100_AXIS_ALL);
@@ -406,22 +386,17 @@ int32_t RM3100Class::applyCalibration(Axis axis, int32_t rawCounts) const
         return 0;
     }
 
-    // 64-bit intermediates are required to prevent overflow:
-    // rawCounts can reach about 8.4M and gain numerator is user-defined.
     int64_t numerator = calibration.gainNumerator;
     int64_t denominator = calibration.gainDenominator;
 
     if (calibration.scaleWithCycleCount)
     {
-        // Empirical gain changes with cycle count approximately inversely,
-        // so we apply gain * (CC_ref / CC_current) if enabled.
         const uint16_t referenceCycleCount = (calibration.referenceCycleCount == 0u) ? _cycleCounts[index] : calibration.referenceCycleCount;
         const uint16_t currentCycleCount = (_cycleCounts[index] == 0u) ? 1u : _cycleCounts[index];
         numerator *= referenceCycleCount;
         denominator *= currentCycleCount;
     }
 
-    // Integer rounded division: no floating point used anywhere.
     int64_t picoTesla = divideRounded(static_cast<int64_t>(rawCounts) * numerator, denominator);
     picoTesla += calibration.offsetPicoTesla;
 
@@ -448,9 +423,9 @@ bool RM3100Class::read3(MagField3 &field, bool waitForReady, uint32_t timeoutMs)
     field.magnitudePicoTesla = 0;
     field.timestampMs = millis();
     field.success = false;
-    field.x = makeAxisMeasurement(0, 0, 0);
-    field.y = makeAxisMeasurement(0, 0, 0);
-    field.z = makeAxisMeasurement(0, 0, 0);
+    field.x = rm3100MakeAxisMeasurement(0, 0, 0);
+    field.y = rm3100MakeAxisMeasurement(0, 0, 0);
+    field.z = rm3100MakeAxisMeasurement(0, 0, 0);
 
     if (waitForReady && !waitForDataReady(timeoutMs))
     {
@@ -468,14 +443,13 @@ bool RM3100Class::read3(MagField3 &field, bool waitForReady, uint32_t timeoutMs)
         return false;
     }
 
-    // RM3100 values are 24-bit two's-complement in MX/MY/MZ registers.
     const int32_t rawX = rawWordToSigned(mx);
     const int32_t rawY = rawWordToSigned(my);
     const int32_t rawZ = rawWordToSigned(mz);
 
-    field.x = makeAxisMeasurement(mx, rawX, applyCalibration(AXIS_INDEX_X, rawX));
-    field.y = makeAxisMeasurement(my, rawY, applyCalibration(AXIS_INDEX_Y, rawY));
-    field.z = makeAxisMeasurement(mz, rawZ, applyCalibration(AXIS_INDEX_Z, rawZ));
+    field.x = rm3100MakeAxisMeasurement(mx, rawX, applyCalibration(AXIS_INDEX_X, rawX));
+    field.y = rm3100MakeAxisMeasurement(my, rawY, applyCalibration(AXIS_INDEX_Y, rawY));
+    field.z = rm3100MakeAxisMeasurement(mz, rawZ, applyCalibration(AXIS_INDEX_Z, rawZ));
     field.magnitudePicoTesla = magnitudeFromComponentsPicoTesla(field.x.picoTesla, field.y.picoTesla, field.z.picoTesla);
     field.status = readStatus();
     field.timestampMs = millis();
@@ -519,109 +493,6 @@ uint8_t RM3100Class::axisMask(bool x, bool y, bool z)
     return mask;
 }
 
-uint32_t RM3100Class::pack24(const uint8_t *data)
-{
-    return (static_cast<uint32_t>(data[0]) << 16) |
-           (static_cast<uint32_t>(data[1]) << 8) |
-           static_cast<uint32_t>(data[2]);
-}
-
-int32_t RM3100Class::rawWordToSigned(uint32_t rawWord)
-{
-    int32_t value = static_cast<int32_t>(rawWord & 0x00FFFFFFUL);
-    if ((value & 0x00800000L) != 0)
-    {
-        value |= static_cast<int32_t>(0xFF000000UL);
-    }
-    return value;
-}
-
-int32_t RM3100Class::clampInt64ToInt32(int64_t value)
-{
-    if (value > INT32_MAX)
-    {
-        return INT32_MAX;
-    }
-    if (value < INT32_MIN)
-    {
-        return INT32_MIN;
-    }
-    return static_cast<int32_t>(value);
-}
-
-int64_t RM3100Class::divideRounded(int64_t numerator, int64_t denominator)
-{
-    if (denominator == 0)
-    {
-        return 0;
-    }
-
-    // Symmetric rounding around zero implemented with sign-aware bias.
-    const int64_t absDenominator = (denominator < 0) ? -denominator : denominator;
-    int64_t bias = absDenominator / 2;
-
-    if ((numerator < 0 && denominator > 0) || (numerator > 0 && denominator < 0))
-    {
-        bias = -bias;
-    }
-
-    return (numerator + bias) / denominator;
-}
-
-uint32_t RM3100Class::absInt32ToUint32(int32_t value)
-{
-    if (value >= 0)
-    {
-        return static_cast<uint32_t>(value);
-    }
-
-    if (value == INT32_MIN)
-    {
-        return 2147483648UL;
-    }
-
-    return static_cast<uint32_t>(-value);
-}
-
-uint32_t RM3100Class::integerSqrtU64(uint64_t value)
-{
-    // Bit-by-bit integer square root. Result is floor(sqrt(value)).
-    uint64_t result = 0;
-    uint64_t bit = 1ULL << 62;
-
-    while (bit > value)
-    {
-        bit >>= 2;
-    }
-
-    while (bit != 0)
-    {
-        if (value >= result + bit)
-        {
-            value -= (result + bit);
-            result = (result >> 1) + bit;
-        }
-        else
-        {
-            result >>= 1;
-        }
-
-        bit >>= 2;
-    }
-
-    return static_cast<uint32_t>(result);
-}
-
-uint32_t RM3100Class::magnitudeFromComponentsPicoTesla(int32_t bx, int32_t by, int32_t bz)
-{
-    const uint64_t x = static_cast<uint64_t>(absInt32ToUint32(bx));
-    const uint64_t y = static_cast<uint64_t>(absInt32ToUint32(by));
-    const uint64_t z = static_cast<uint64_t>(absInt32ToUint32(bz));
-
-    const uint64_t sum = (x * x) + (y * y) + (z * z);
-    return integerSqrtU64(sum);
-}
-
 void RM3100Class::configureDrdyPin()
 {
     if (_drdyPin != RM3100_NO_PIN)
@@ -637,7 +508,6 @@ void RM3100Class::updateCachedRegister(uint8_t reg, uint8_t value)
         return;
     }
 
-    // CC registers are contiguous pairs [MSB, LSB] for X/Y/Z.
     const uint8_t index = static_cast<uint8_t>((reg - RM3100_CCX1) / 2u);
     const bool isMsb = ((reg - RM3100_CCX1) % 2u) == 0u;
     uint8_t msb = static_cast<uint8_t>(_cycleCounts[index] >> 8);
@@ -661,121 +531,4 @@ void RM3100Class::updateCachedRegisters(uint8_t reg, const uint8_t *data, size_t
     {
         updateCachedRegister(static_cast<uint8_t>(reg + i), data[i]);
     }
-}
-
-bool RM3100Class::readRegistersSpi(uint8_t reg, uint8_t *data, size_t length)
-{
-    if (_spi == 0 || _csPin == RM3100_NO_PIN)
-    {
-        return false;
-    }
-
-    _spi->beginTransaction(_spiSettings);
-    digitalWrite(_csPin, LOW);
-    // Address phase returns STATUS on MISO, but here we only need data bytes.
-    _spi->transfer(static_cast<uint8_t>(reg | RM3100_READ_FLAG));
-
-    for (size_t i = 0; i < length; ++i)
-    {
-        data[i] = _spi->transfer(0x00u);
-    }
-
-    digitalWrite(_csPin, HIGH);
-    _spi->endTransaction();
-    return true;
-}
-
-bool RM3100Class::writeRegistersSpi(uint8_t reg, const uint8_t *data, size_t length)
-{
-    if (_spi == 0 || _csPin == RM3100_NO_PIN)
-    {
-        return false;
-    }
-
-    _spi->beginTransaction(_spiSettings);
-    digitalWrite(_csPin, LOW);
-    _spi->transfer(static_cast<uint8_t>(reg & RM3100_WRITE_MASK));
-
-    for (size_t i = 0; i < length; ++i)
-    {
-        _spi->transfer(data[i]);
-    }
-
-    digitalWrite(_csPin, HIGH);
-    _spi->endTransaction();
-    return true;
-}
-
-bool RM3100Class::readRegistersI2C(uint8_t reg, uint8_t *data, size_t length)
-{
-    if (_wire == 0)
-    {
-        return false;
-    }
-
-    size_t offset = 0;
-    while (offset < length)
-    {
-        // Chunking keeps transactions below common Wire buffer limits.
-        const size_t chunk = ((length - offset) > 28u) ? 28u : (length - offset);
-
-        _wire->beginTransmission(_address);
-        _wire->write(static_cast<uint8_t>(reg + offset));
-        if (_wire->endTransmission(false) != 0)
-        {
-            return false;
-        }
-
-        const uint8_t requested = static_cast<uint8_t>(chunk);
-        const uint8_t received = _wire->requestFrom(static_cast<int>(_address), static_cast<int>(requested));
-        if (received != requested)
-        {
-            return false;
-        }
-
-        for (size_t i = 0; i < chunk; ++i)
-        {
-            if (!_wire->available())
-            {
-                return false;
-            }
-            data[offset + i] = static_cast<uint8_t>(_wire->read());
-        }
-
-        offset += chunk;
-    }
-
-    return true;
-}
-
-bool RM3100Class::writeRegistersI2C(uint8_t reg, const uint8_t *data, size_t length)
-{
-    if (_wire == 0)
-    {
-        return false;
-    }
-
-    size_t offset = 0;
-    while (offset < length)
-    {
-        // One byte is used by register address, rest by payload bytes.
-        const size_t chunk = ((length - offset) > 24u) ? 24u : (length - offset);
-
-        _wire->beginTransmission(_address);
-        _wire->write(static_cast<uint8_t>(reg + offset));
-
-        for (size_t i = 0; i < chunk; ++i)
-        {
-            _wire->write(data[offset + i]);
-        }
-
-        if (_wire->endTransmission(true) != 0)
-        {
-            return false;
-        }
-
-        offset += chunk;
-    }
-
-    return true;
 }
