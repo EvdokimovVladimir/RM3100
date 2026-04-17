@@ -2,10 +2,12 @@
 
 bool RM3100Class::readRegistersI2C(uint8_t reg, uint8_t *data, size_t length)
 {
-    if (_wire == 0)
+    if (_wire == nullptr)
     {
         return false;
     }
+
+    configureI2CClock();
 
     size_t offset = 0;
     while (offset < length)
@@ -21,20 +23,20 @@ bool RM3100Class::readRegistersI2C(uint8_t reg, uint8_t *data, size_t length)
             return false;
         }
 
-        const uint8_t requested = static_cast<uint8_t>(chunk);
-        const uint8_t received = _wire->requestFrom(static_cast<int>(_address), static_cast<int>(requested));
+        const size_t requested = chunk;
+        const size_t received = static_cast<size_t>(_wire->requestFrom(static_cast<int>(_address), static_cast<int>(requested)));
         if (received != requested)
         {
             return false;
         }
 
-        for (size_t i = 0; i < chunk; ++i)
+        for (size_t index = 0; index < chunk; ++index)
         {
             if (!_wire->available())
             {
                 return false;
             }
-            data[offset + i] = static_cast<uint8_t>(_wire->read());
+            data[offset + index] = static_cast<uint8_t>(_wire->read());
         }
 
         offset += chunk;
@@ -45,10 +47,12 @@ bool RM3100Class::readRegistersI2C(uint8_t reg, uint8_t *data, size_t length)
 
 bool RM3100Class::writeRegistersI2C(uint8_t reg, const uint8_t *data, size_t length)
 {
-    if (_wire == 0)
+    if (_wire == nullptr)
     {
         return false;
     }
+
+    configureI2CClock();
 
     size_t offset = 0;
     while (offset < length)
@@ -60,9 +64,9 @@ bool RM3100Class::writeRegistersI2C(uint8_t reg, const uint8_t *data, size_t len
         _wire->beginTransmission(_address);
         _wire->write(static_cast<uint8_t>(reg + offset));
 
-        for (size_t i = 0; i < chunk; ++i)
+        for (size_t index = 0; index < chunk; ++index)
         {
-            _wire->write(data[offset + i]);
+            _wire->write(data[offset + index]);
         }
 
         if (_wire->endTransmission(true) != 0)

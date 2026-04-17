@@ -3,35 +3,35 @@
 RM3100Class RM3100;
 
 RM3100Class::RM3100Class()
-    : _busType(BUS_NONE),
-      _spi(0),
-      _wire(0),
-      _csPin(RM3100_NO_PIN),
-      _drdyPin(RM3100_NO_PIN),
-      _address(RM3100_I2C_ADDRESS_00),
+    : _busType(BusType::None),
+      _spi(nullptr),
+      _wire(nullptr),
+      _csPin(kNoPin),
+      _drdyPin(kNoPin),
+      _address(kI2CAddress00),
       _i2cClockHz(400000UL),
       _spiSettings(1000000, MSBFIRST, SPI_MODE3)
 {
-    _cycleCounts[0] = RM3100_DEFAULT_CYCLE_COUNT;
-    _cycleCounts[1] = RM3100_DEFAULT_CYCLE_COUNT;
-    _cycleCounts[2] = RM3100_DEFAULT_CYCLE_COUNT;
+    _cycleCounts[0] = kDefaultCycleCount;
+    _cycleCounts[1] = kDefaultCycleCount;
+    _cycleCounts[2] = kDefaultCycleCount;
 
-    for (uint8_t i = 0; i < 3; ++i)
+    for (uint8_t index = 0; index < 3; ++index)
     {
-        _calibration[i].gainNumerator = 0;
-        _calibration[i].gainDenominator = 1;
-        _calibration[i].offsetPicoTesla = 0;
-        _calibration[i].referenceCycleCount = RM3100_DEFAULT_CYCLE_COUNT;
-        _calibration[i].scaleWithCycleCount = true;
-        _calibration[i].valid = false;
+        _calibration[index].gainNumerator = 0;
+        _calibration[index].gainDenominator = 1;
+        _calibration[index].offsetPicoTesla = 0;
+        _calibration[index].referenceCycleCount = kDefaultCycleCount;
+        _calibration[index].scaleWithCycleCount = true;
+        _calibration[index].valid = false;
     }
 }
 
 bool RM3100Class::beginSPI(uint8_t csPin, uint8_t drdyPin, SPIClass &spi, const SPISettings &spiSettings)
 {
-    _busType = BUS_SPI;
+    _busType = BusType::Spi;
     _spi = &spi;
-    _wire = 0;
+    _wire = nullptr;
     _csPin = csPin;
     _drdyPin = drdyPin;
     _spiSettings = spiSettings;
@@ -40,37 +40,34 @@ bool RM3100Class::beginSPI(uint8_t csPin, uint8_t drdyPin, SPIClass &spi, const 
     digitalWrite(_csPin, HIGH);
     configureDrdyPin();
 
-    _spi->begin();
     return true;
 }
 
 bool RM3100Class::beginI2C(uint8_t address, uint8_t drdyPin, TwoWire &wire, uint32_t clockHz)
 {
-    _busType = BUS_I2C;
-    _spi = 0;
+    _busType = BusType::I2C;
+    _spi = nullptr;
     _wire = &wire;
-    _csPin = RM3100_NO_PIN;
+    _csPin = kNoPin;
     _drdyPin = drdyPin;
     _address = address;
     _i2cClockHz = clockHz;
 
     configureDrdyPin();
 
-    _wire->begin();
-    _wire->setClock(_i2cClockHz);
     return true;
 }
 
 void RM3100Class::end()
 {
-    if (_busType == BUS_SPI && _csPin != RM3100_NO_PIN)
+    if (_busType == BusType::Spi && _csPin != kNoPin)
     {
         digitalWrite(_csPin, HIGH);
     }
 
-    _busType = BUS_NONE;
-    _spi = 0;
-    _wire = 0;
+    _busType = BusType::None;
+    _spi = nullptr;
+    _wire = nullptr;
 }
 
 RM3100Class::BusType RM3100Class::busType() const
@@ -88,9 +85,14 @@ uint8_t RM3100Class::drdyPin() const
     return _drdyPin;
 }
 
+uint8_t RM3100Class::axisToIndex(Axis axis)
+{
+    return static_cast<uint8_t>(axis);
+}
+
 uint16_t RM3100Class::cycleCount(Axis axis) const
 {
-    return _cycleCounts[static_cast<uint8_t>(axis)];
+    return _cycleCounts[axisToIndex(axis)];
 }
 
 uint8_t RM3100Class::readRegister(uint8_t reg)
@@ -112,16 +114,16 @@ bool RM3100Class::writeRegister(uint8_t reg, uint8_t value)
 
 bool RM3100Class::readRegisters(uint8_t reg, uint8_t *data, size_t length)
 {
-    if (data == 0 || length == 0)
+    if (data == nullptr || length == 0u)
     {
         return false;
     }
 
     switch (_busType)
     {
-    case BUS_SPI:
+    case BusType::Spi:
         return readRegistersSpi(reg, data, length);
-    case BUS_I2C:
+    case BusType::I2C:
         return readRegistersI2C(reg, data, length);
     default:
         return false;
@@ -130,7 +132,7 @@ bool RM3100Class::readRegisters(uint8_t reg, uint8_t *data, size_t length)
 
 bool RM3100Class::writeRegisters(uint8_t reg, const uint8_t *data, size_t length)
 {
-    if (data == 0 || length == 0)
+    if (data == nullptr || length == 0u)
     {
         return false;
     }
@@ -139,10 +141,10 @@ bool RM3100Class::writeRegisters(uint8_t reg, const uint8_t *data, size_t length
 
     switch (_busType)
     {
-    case BUS_SPI:
+    case BusType::Spi:
         ok = writeRegistersSpi(reg, data, length);
         break;
-    case BUS_I2C:
+    case BusType::I2C:
         ok = writeRegistersI2C(reg, data, length);
         break;
     default:
@@ -161,7 +163,7 @@ bool RM3100Class::writeRegisters(uint8_t reg, const uint8_t *data, size_t length
 bool RM3100Class::readCycleCounts(uint16_t &x, uint16_t &y, uint16_t &z)
 {
     uint8_t buffer[6];
-    if (!readRegisters(RM3100_CCX1, buffer, sizeof(buffer)))
+    if (!readRegisters(kRegisterCcx1, buffer, sizeof(buffer)))
     {
         return false;
     }
@@ -185,7 +187,7 @@ bool RM3100Class::setCycleCounts(uint16_t x, uint16_t y, uint16_t z)
     buffer[3] = static_cast<uint8_t>(y & 0xFFu);
     buffer[4] = static_cast<uint8_t>(z >> 8);
     buffer[5] = static_cast<uint8_t>(z & 0xFFu);
-    return writeRegisters(RM3100_CCX1, buffer, sizeof(buffer));
+    return writeRegisters(kRegisterCcx1, buffer, sizeof(buffer));
 }
 
 bool RM3100Class::setCycleCountAll(uint16_t cycleCount)
@@ -195,53 +197,53 @@ bool RM3100Class::setCycleCountAll(uint16_t cycleCount)
 
 bool RM3100Class::singleMeasurement(uint8_t axisMask)
 {
-    uint8_t value = static_cast<uint8_t>(axisMask & RM3100_AXIS_ALL);
-    return writeRegister(RM3100_POLL, value);
+    const uint8_t value = static_cast<uint8_t>(axisMask & kAxisAll);
+    return writeRegister(kRegisterPoll, value);
 }
 
 bool RM3100Class::startContinuous(uint8_t axisMask, bool drdyWhenAllAxes)
 {
-    uint8_t cmmValue = static_cast<uint8_t>((axisMask & RM3100_AXIS_ALL) | RM3100_CMM_START);
+    uint8_t cmmValue = static_cast<uint8_t>((axisMask & kAxisAll) | kCmmStart);
     if (drdyWhenAllAxes)
     {
-        cmmValue = static_cast<uint8_t>(cmmValue | RM3100_CMM_DRDY_WHEN_ALL);
+        cmmValue = static_cast<uint8_t>(cmmValue | kCmmDrdyWhenAll);
     }
-    return writeRegister(RM3100_CMM, cmmValue);
+    return writeRegister(kRegisterCmm, cmmValue);
 }
 
 bool RM3100Class::setContinuousModeRaw(uint8_t cmmValue)
 {
-    return writeRegister(RM3100_CMM, cmmValue);
+    return writeRegister(kRegisterCmm, cmmValue);
 }
 
 bool RM3100Class::stopContinuous()
 {
-    return writeRegister(RM3100_CMM, 0x00u);
+    return writeRegister(kRegisterCmm, 0x00u);
 }
 
 bool RM3100Class::setTMRC(uint8_t value)
 {
-    return writeRegister(RM3100_TMRC, value);
+    return writeRegister(kRegisterTmrc, value);
 }
 
 uint8_t RM3100Class::readTMRC()
 {
-    return readRegister(RM3100_TMRC);
+    return readRegister(kRegisterTmrc);
 }
 
 uint8_t RM3100Class::readStatus()
 {
-    return readRegister(RM3100_STATUS);
+    return readRegister(kRegisterStatus);
 }
 
 bool RM3100Class::statusDataReady()
 {
-    return (readStatus() & RM3100_STATUS_DRDY) != 0u;
+    return (readStatus() & kStatusDataReady) != 0u;
 }
 
 bool RM3100Class::pinDataReady() const
 {
-    if (_drdyPin == RM3100_NO_PIN)
+    if (_drdyPin == kNoPin)
     {
         return false;
     }
@@ -251,7 +253,7 @@ bool RM3100Class::pinDataReady() const
 
 bool RM3100Class::dataReady()
 {
-    if (_drdyPin != RM3100_NO_PIN)
+    if (_drdyPin != kNoPin)
     {
         return pinDataReady();
     }
@@ -277,34 +279,35 @@ bool RM3100Class::waitForDataReady(uint32_t timeoutMs)
 
 uint8_t RM3100Class::readHandshake()
 {
-    return readRegister(RM3100_HSHAKE);
+    return readRegister(kRegisterHandshake);
 }
 
 bool RM3100Class::writeHandshake(uint8_t value)
 {
-    return writeRegister(RM3100_HSHAKE, value);
+    return writeRegister(kRegisterHandshake, value);
 }
 
 uint8_t RM3100Class::readBIST()
 {
-    return readRegister(RM3100_BIST);
+    return readRegister(kRegisterBist);
 }
 
 bool RM3100Class::writeBIST(uint8_t value)
 {
-    return writeRegister(RM3100_BIST, value);
+    return writeRegister(kRegisterBist, value);
 }
 
 bool RM3100Class::runBuiltInSelfTest(uint8_t axisMask, uint8_t bistConfig, uint32_t timeoutMs, uint8_t *bistResult)
 {
-    uint8_t config = static_cast<uint8_t>(bistConfig | RM3100_BIST_STE);
+    const uint8_t expectedAxisMask = static_cast<uint8_t>(axisMask & kAxisAll);
+    const uint8_t config = static_cast<uint8_t>(bistConfig | kBistSte);
 
     if (!writeBIST(config))
     {
         return false;
     }
 
-    if (!singleMeasurement(axisMask))
+    if (!singleMeasurement(expectedAxisMask))
     {
         return false;
     }
@@ -315,31 +318,31 @@ bool RM3100Class::runBuiltInSelfTest(uint8_t axisMask, uint8_t bistConfig, uint3
     }
 
     const uint8_t result = readBIST();
-    if (bistResult != 0)
+    if (bistResult != nullptr)
     {
         *bistResult = result;
     }
 
-    writeBIST(static_cast<uint8_t>(config & ~RM3100_BIST_STE));
+    writeBIST(static_cast<uint8_t>(config & ~kBistSte));
 
-    return (result & axisMask) == (axisMask & RM3100_AXIS_ALL);
+    return (result & expectedAxisMask) == expectedAxisMask;
 }
 
 uint8_t RM3100Class::readRevision()
 {
-    return readRegister(RM3100_REVID);
+    return readRegister(kRegisterRevision);
 }
 
 void RM3100Class::clearCalibration()
 {
-    clearCalibration(AXIS_INDEX_X);
-    clearCalibration(AXIS_INDEX_Y);
-    clearCalibration(AXIS_INDEX_Z);
+    clearCalibration(Axis::X);
+    clearCalibration(Axis::Y);
+    clearCalibration(Axis::Z);
 }
 
 void RM3100Class::clearCalibration(Axis axis)
 {
-    const uint8_t index = static_cast<uint8_t>(axis);
+    const uint8_t index = axisToIndex(axis);
     _calibration[index].gainNumerator = 0;
     _calibration[index].gainDenominator = 1;
     _calibration[index].offsetPicoTesla = 0;
@@ -350,7 +353,7 @@ void RM3100Class::clearCalibration(Axis axis)
 
 void RM3100Class::setAxisCalibration(Axis axis, int64_t gainNumerator, uint32_t gainDenominator, int32_t offsetPicoTesla, uint16_t referenceCycleCount, bool scaleWithCycleCount, bool valid)
 {
-    const uint8_t index = static_cast<uint8_t>(axis);
+    const uint8_t index = axisToIndex(axis);
     _calibration[index].gainNumerator = gainNumerator;
     _calibration[index].gainDenominator = (gainDenominator == 0u) ? 1u : gainDenominator;
     _calibration[index].offsetPicoTesla = offsetPicoTesla;
@@ -368,17 +371,17 @@ void RM3100Class::setCalibration(const RM3100Calibration &calibration)
 
 RM3100AxisCalibration RM3100Class::axisCalibration(Axis axis) const
 {
-    return _calibration[static_cast<uint8_t>(axis)];
+    return _calibration[axisToIndex(axis)];
 }
 
 bool RM3100Class::hasCalibration(Axis axis) const
 {
-    return _calibration[static_cast<uint8_t>(axis)].valid;
+    return _calibration[axisToIndex(axis)].valid;
 }
 
 int32_t RM3100Class::applyCalibration(Axis axis, int32_t rawCounts) const
 {
-    const uint8_t index = static_cast<uint8_t>(axis);
+    const uint8_t index = axisToIndex(axis);
     const RM3100AxisCalibration &calibration = _calibration[index];
 
     if (!calibration.valid || calibration.gainDenominator == 0u)
@@ -405,8 +408,8 @@ int32_t RM3100Class::applyCalibration(Axis axis, int32_t rawCounts) const
 
 bool RM3100Class::readMeasurementWords(uint32_t &mx, uint32_t &my, uint32_t &mz)
 {
-    uint8_t buffer[RM3100_MEASUREMENT_BYTES];
-    if (!readRegisters(RM3100_MX2, buffer, sizeof(buffer)))
+    uint8_t buffer[kMeasurementBytes];
+    if (!readRegisters(kRegisterMx2, buffer, sizeof(buffer)))
     {
         return false;
     }
@@ -417,7 +420,7 @@ bool RM3100Class::readMeasurementWords(uint32_t &mx, uint32_t &my, uint32_t &mz)
     return true;
 }
 
-bool RM3100Class::read3(MagField3 &field, bool waitForReady, uint32_t timeoutMs)
+bool RM3100Class::read3(RM3100MagField3 &field, bool waitForReady, uint32_t timeoutMs)
 {
     field.status = 0;
     field.magnitudePicoTesla = 0;
@@ -447,9 +450,9 @@ bool RM3100Class::read3(MagField3 &field, bool waitForReady, uint32_t timeoutMs)
     const int32_t rawY = rawWordToSigned(my);
     const int32_t rawZ = rawWordToSigned(mz);
 
-    field.x = rm3100MakeAxisMeasurement(mx, rawX, applyCalibration(AXIS_INDEX_X, rawX));
-    field.y = rm3100MakeAxisMeasurement(my, rawY, applyCalibration(AXIS_INDEX_Y, rawY));
-    field.z = rm3100MakeAxisMeasurement(mz, rawZ, applyCalibration(AXIS_INDEX_Z, rawZ));
+    field.x = rm3100MakeAxisMeasurement(mx, rawX, applyCalibration(Axis::X, rawX));
+    field.y = rm3100MakeAxisMeasurement(my, rawY, applyCalibration(Axis::Y, rawY));
+    field.z = rm3100MakeAxisMeasurement(mz, rawZ, applyCalibration(Axis::Z, rawZ));
     field.magnitudePicoTesla = magnitudeFromComponentsPicoTesla(field.x.picoTesla, field.y.picoTesla, field.z.picoTesla);
     field.status = readStatus();
     field.timestampMs = millis();
@@ -458,14 +461,14 @@ bool RM3100Class::read3(MagField3 &field, bool waitForReady, uint32_t timeoutMs)
     return true;
 }
 
-MagField3 RM3100Class::read3(bool waitForReady, uint32_t timeoutMs)
+RM3100MagField3 RM3100Class::read3(bool waitForReady, uint32_t timeoutMs)
 {
-    MagField3 field;
+    RM3100MagField3 field;
     read3(field, waitForReady, timeoutMs);
     return field;
 }
 
-bool RM3100Class::read3Once(MagField3 &field, uint8_t axisMask, uint32_t timeoutMs)
+bool RM3100Class::read3Once(RM3100MagField3 &field, uint8_t axisMask, uint32_t timeoutMs)
 {
     if (!singleMeasurement(axisMask))
     {
@@ -480,36 +483,44 @@ uint8_t RM3100Class::axisMask(bool x, bool y, bool z)
     uint8_t mask = 0;
     if (x)
     {
-        mask = static_cast<uint8_t>(mask | RM3100_AXIS_X);
+        mask = static_cast<uint8_t>(mask | kAxisX);
     }
     if (y)
     {
-        mask = static_cast<uint8_t>(mask | RM3100_AXIS_Y);
+        mask = static_cast<uint8_t>(mask | kAxisY);
     }
     if (z)
     {
-        mask = static_cast<uint8_t>(mask | RM3100_AXIS_Z);
+        mask = static_cast<uint8_t>(mask | kAxisZ);
     }
     return mask;
 }
 
 void RM3100Class::configureDrdyPin()
 {
-    if (_drdyPin != RM3100_NO_PIN)
+    if (_drdyPin != kNoPin)
     {
         pinMode(_drdyPin, INPUT);
     }
 }
 
+void RM3100Class::configureI2CClock() const
+{
+    if (_wire != nullptr && _i2cClockHz != 0UL)
+    {
+        _wire->setClock(_i2cClockHz);
+    }
+}
+
 void RM3100Class::updateCachedRegister(uint8_t reg, uint8_t value)
 {
-    if (reg < RM3100_CCX1 || reg > RM3100_CCZ0)
+    if (reg < kRegisterCcx1 || reg > kRegisterCcz0)
     {
         return;
     }
 
-    const uint8_t index = static_cast<uint8_t>((reg - RM3100_CCX1) / 2u);
-    const bool isMsb = ((reg - RM3100_CCX1) % 2u) == 0u;
+    const uint8_t index = static_cast<uint8_t>((reg - kRegisterCcx1) / 2u);
+    const bool isMsb = ((reg - kRegisterCcx1) % 2u) == 0u;
     uint8_t msb = static_cast<uint8_t>(_cycleCounts[index] >> 8);
     uint8_t lsb = static_cast<uint8_t>(_cycleCounts[index] & 0xFFu);
 
@@ -527,8 +538,8 @@ void RM3100Class::updateCachedRegister(uint8_t reg, uint8_t value)
 
 void RM3100Class::updateCachedRegisters(uint8_t reg, const uint8_t *data, size_t length)
 {
-    for (size_t i = 0; i < length; ++i)
+    for (size_t index = 0; index < length; ++index)
     {
-        updateCachedRegister(static_cast<uint8_t>(reg + i), data[i]);
+        updateCachedRegister(static_cast<uint8_t>(reg + index), data[index]);
     }
 }
