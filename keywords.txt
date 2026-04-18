@@ -1,9 +1,22 @@
+#######################################
+# Syntax Coloring Map For RM3100
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
 RM3100 KEYWORD1
 RM3100Class KEYWORD1
 RM3100Calibration KEYWORD1
 RM3100AxisCalibration KEYWORD1
 RM3100AxisMeasurement KEYWORD1
 RM3100MagField3 KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
 beginSPI KEYWORD2
 beginI2C KEYWORD2
 read3 KEYWORD2
@@ -17,6 +30,11 @@ runBuiltInSelfTest KEYWORD2
 setCalibration KEYWORD2
 setAxisCalibration KEYWORD2
 readRevision KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
 kDefaultCycleCount LITERAL1
 kTmrc75Hz LITERAL1
 kAxisAll LITERAL1
