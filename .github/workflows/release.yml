@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Validate And Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Validate tag against library version
+        id: version
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          LIBRARY_VERSION="$(grep '^version=' library.properties | cut -d'=' -f2)"
+
+          if [[ -z "${LIBRARY_VERSION}" ]]; then
+            echo "Version is missing in library.properties"
+            exit 1
+          fi
+
+          if [[ "${TAG_VERSION}" != "${LIBRARY_VERSION}" ]]; then
+            echo "Tag version ${TAG_VERSION} does not match library.properties version ${LIBRARY_VERSION}"
+            exit 1
+          fi
+
+          echo "release_version=${TAG_VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install Arduino AVR core
+        shell: bash
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+
+      - name: Compile examples
+        shell: bash
+        run: |
+          for sketch_dir in examples/BasicSPI examples/BasicI2C examples/FullFeaturedDemo; do
+            arduino-cli compile \
+              --fqbn arduino:avr:uno \
+              --warnings default \
+              --library . \
+              "${sketch_dir}"
+          done
+
+      - name: Create release archive
+        shell: bash
+        run: |
+          PACKAGE_ROOT="dist/RM3100-Arduino"
+          ARCHIVE_PATH="dist/RM3100-Arduino-${{ steps.version.outputs.release_version }}.zip"
+
+          mkdir -p "${PACKAGE_ROOT}"
+          cp -r src "${PACKAGE_ROOT}/"
+          cp -r examples "${PACKAGE_ROOT}/"
+          cp README.md library.properties keywords.txt LICENSE "${PACKAGE_ROOT}/"
+          cp RM3100-RM2100-Magneto-Inductive-Magnetometer-User-Manual-V14.0.md "${PACKAGE_ROOT}/"
+          cp RM3100-RM2100-Magneto-Inductive-Magnetometer-User-Manual-V14.0.pdf "${PACKAGE_ROOT}/"
+
+          cd dist
+          zip -r "$(basename "${ARCHIVE_PATH}")" RM3100-Arduino
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/RM3100-Arduino-${{ steps.version.outputs.release_version }}.zip
