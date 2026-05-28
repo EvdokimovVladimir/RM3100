@@ -48,6 +48,16 @@ int64_t RM3100Class::divideRounded(int64_t numerator, int64_t denominator)
     return (numerator + bias) / denominator;
 }
 
+int64_t RM3100Class::roundFloatToInt64(float value)
+{
+    if (value >= 0.0f)
+    {
+        return static_cast<int64_t>(value + 0.5f);
+    }
+
+    return static_cast<int64_t>(value - 0.5f);
+}
+
 uint32_t RM3100Class::absInt32ToUint32(int32_t value)
 {
     if (value >= 0)

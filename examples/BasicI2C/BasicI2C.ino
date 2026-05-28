@@ -16,6 +16,12 @@ void printField(const RM3100MagField3 &field)
     Serial.print(field.y.raw);
     Serial.print(',');
     Serial.print(field.z.raw);
+    Serial.print(F(" pT="));
+    Serial.print(field.x.picoTesla);
+    Serial.print(',');
+    Serial.print(field.y.picoTesla);
+    Serial.print(',');
+    Serial.print(field.z.picoTesla);
     Serial.print(F(" status=0x"));
     Serial.println(field.status, HEX);
 }
@@ -36,6 +42,7 @@ void setup()
 
     Serial.print(F("RM3100 REVID: 0x"));
     Serial.println(RM3100.readRevision(), HEX);
+    Serial.println(F("Calibration: disabled"));
 }
 
 void loop()

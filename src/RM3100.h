@@ -5,10 +5,27 @@
 #include <SPI.h>
 #include <Wire.h>
 
+#define RM3100_CALIBRATION_INTEGER 0
+#define RM3100_CALIBRATION_FLOAT 1
+
+#ifndef RM3100_CALIBRATION
+#define RM3100_CALIBRATION RM3100_CALIBRATION_INTEGER
+#endif
+
+#if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
+typedef float RM3100CalibrationGain;
+#else
+typedef int32_t RM3100CalibrationGain;
+#endif
+
 struct RM3100AxisCalibration
 {
-    int64_t gainNumerator;
+#if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
+    RM3100CalibrationGain gain;
+#else
+    RM3100CalibrationGain gainNumerator;
     uint32_t gainDenominator;
+#endif
     int32_t offsetPicoTesla;
     uint16_t referenceCycleCount;
     bool scaleWithCycleCount;
@@ -210,8 +227,12 @@ public:
     void clearCalibration(Axis axis);
     void setAxisCalibration(
         Axis axis,
-        int64_t gainNumerator,
+    #if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
+        float gain,
+    #else
+        int32_t gainNumerator,
         uint32_t gainDenominator,
+    #endif
         int32_t offsetPicoTesla = 0,
         uint16_t referenceCycleCount = 0,
         bool scaleWithCycleCount = true,
@@ -235,6 +256,7 @@ private:
     static uint8_t axisToIndex(Axis axis);
     static int32_t clampInt64ToInt32(int64_t value);
     static int64_t divideRounded(int64_t numerator, int64_t denominator);
+    static int64_t roundFloatToInt64(float value);
     static uint32_t absInt32ToUint32(int32_t value);
     static uint32_t integerSqrtU64(uint64_t value);
 

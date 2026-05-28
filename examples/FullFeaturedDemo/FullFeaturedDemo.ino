@@ -13,15 +13,58 @@ constexpr uint32_t kI2CClockHz = 400000UL;
 constexpr uint16_t kCycleCount = RM3100Class::kDefaultCycleCount;
 constexpr uint32_t kReadTimeoutMs = 1000UL;
 constexpr uint32_t kPrintPeriodMs = 250UL;
+constexpr int32_t kOffsetPicoTesla = 0;
 
+#if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
+constexpr float kGainPicoTeslaPerCount = 13333.333f;
 const RM3100AxisCalibration kCalibrationDisabled = {0, 1, 0, kCycleCount, true, false};
+#else
+constexpr int32_t kGainNumerator = 40000;
+constexpr uint32_t kGainDenominator = 3;
+const RM3100AxisCalibration kCalibrationDisabled = {0, 1, 0, kCycleCount, true, false};
+#endif
+
+const RM3100AxisCalibration kDemoAxisCalibration = {
+#if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
+    kGainPicoTeslaPerCount,
+#else
+    kGainNumerator,
+    kGainDenominator,
+#endif
+    kOffsetPicoTesla,
+    kCycleCount,
+    true,
+    true,
+};
+
 const RM3100Calibration kDefaultCalibration = {
-    kCalibrationDisabled,
-    kCalibrationDisabled,
-    kCalibrationDisabled,
+    kDemoAxisCalibration,
+    kDemoAxisCalibration,
+    kDemoAxisCalibration,
 };
 
 uint32_t lastPrintMs = 0;
+}
+
+void printCalibration(const RM3100AxisCalibration &calibration)
+{
+#if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
+    Serial.print(F("gain="));
+    Serial.print(calibration.gain, 3);
+#else
+    Serial.print(F("gain="));
+    Serial.print(calibration.gainNumerator);
+    Serial.print('/');
+    Serial.print(calibration.gainDenominator);
+#endif
+    Serial.print(F(" offset="));
+    Serial.print(calibration.offsetPicoTesla);
+    Serial.print(F(" refCC="));
+    Serial.print(calibration.referenceCycleCount);
+    Serial.print(F(" scaleWithCC="));
+    Serial.print(calibration.scaleWithCycleCount);
+    Serial.print(F(" valid="));
+    Serial.println(calibration.valid);
 }
 
 void printCycleCounts()
@@ -110,6 +153,13 @@ void setupSensor()
 
     Serial.print(F("REVID: 0x"));
     Serial.println(RM3100.readRevision(), HEX);
+    Serial.print(F("Calibration mode: "));
+#if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
+    Serial.println(F("float"));
+#else
+    Serial.println(F("integer"));
+#endif
+    printCalibration(kDemoAxisCalibration);
     printCycleCounts();
     runSelfTest();
 
@@ -140,7 +190,7 @@ void setup()
     }
 
     Serial.println(F("RM3100 full demo"));
-    Serial.println(F("Калибровка по умолчанию отключена, поэтому picoTesla = 0 до загрузки реальных коэффициентов."));
+    Serial.println(F("Демонстрационная калибровка загружается в picoTesla на count для текущего режима сборки."));
 
     configureTransport();
     setupSensor();

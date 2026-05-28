@@ -1,11 +1,28 @@
-#include <SPI.h>
+#define RM3100_CALIBRATION RM3100_CALIBRATION_FLOAT
+#include <Wire.h>
 #include <RM3100.h>
 
 namespace
 {
-constexpr uint8_t kChipSelectPin = 10;
-constexpr uint8_t kDataReadyPin = 9;
+constexpr uint8_t kAddress = RM3100Class::kI2CAddress00;
+constexpr uint32_t kBusClockHz = 400000UL;
 constexpr uint32_t kReadTimeoutMs = 1000UL;
+constexpr uint16_t kCycleCount = RM3100Class::kDefaultCycleCount;
+constexpr float kGainPicoTeslaPerCount = 13333.333f;
+
+const RM3100AxisCalibration kAxisCalibration = {
+    kGainPicoTeslaPerCount,
+    0,
+    kCycleCount,
+    true,
+    true,
+};
+
+const RM3100Calibration kCalibration = {
+    kAxisCalibration,
+    kAxisCalibration,
+    kAxisCalibration,
+};
 }
 
 void printField(const RM3100MagField3 &field)
@@ -33,16 +50,17 @@ void setup()
     {
     }
 
-    SPI.begin();
+    Wire.begin();
 
-    RM3100.beginSPI(kChipSelectPin, kDataReadyPin, SPI, SPISettings(1000000, MSBFIRST, SPI_MODE3));
-    RM3100.setCycleCountAll(RM3100Class::kDefaultCycleCount);
+    RM3100.beginI2C(kAddress, RM3100Class::kNoPin, Wire, kBusClockHz);
+    RM3100.setCalibration(kCalibration);
+    RM3100.setCycleCountAll(kCycleCount);
     RM3100.setTMRC(RM3100Class::kTmrc75Hz);
     RM3100.startContinuous(RM3100Class::kAxisAll, true);
 
     Serial.print(F("RM3100 REVID: 0x"));
     Serial.println(RM3100.readRevision(), HEX);
-    Serial.println(F("Calibration: disabled"));
+    Serial.println(F("Calibration: float pT/count"));
 }
 
 void loop()
