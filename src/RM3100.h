@@ -8,28 +8,60 @@
 #define RM3100_CALIBRATION_INTEGER 0
 #define RM3100_CALIBRATION_FLOAT 1
 
+#if defined(DRM3100_CALIBRATION) && !defined(RM3100_CALIBRATION)
+#define RM3100_CALIBRATION DRM3100_CALIBRATION
+#endif
+
 #ifndef RM3100_CALIBRATION
 #define RM3100_CALIBRATION RM3100_CALIBRATION_INTEGER
 #endif
 
-#if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
-typedef float RM3100CalibrationGain;
-#else
-typedef int32_t RM3100CalibrationGain;
-#endif
-
 struct RM3100AxisCalibration
 {
-#if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
-    RM3100CalibrationGain gain;
-#else
-    RM3100CalibrationGain gainNumerator;
+    int32_t gainNumerator;
     uint32_t gainDenominator;
-#endif
+    float gain;
     int32_t offsetPicoTesla;
     uint16_t referenceCycleCount;
     bool scaleWithCycleCount;
     bool valid;
+    bool useFloatGain;
+
+    constexpr RM3100AxisCalibration()
+        : gainNumerator(0),
+          gainDenominator(1u),
+          gain(0.0f),
+          offsetPicoTesla(0),
+          referenceCycleCount(0u),
+          scaleWithCycleCount(true),
+          valid(false),
+          useFloatGain(false)
+    {
+    }
+
+    constexpr RM3100AxisCalibration(int32_t numerator, uint32_t denominator, int32_t offset, uint16_t referenceCount, bool scale, bool isValid)
+        : gainNumerator(numerator),
+          gainDenominator((denominator == 0u) ? 1u : denominator),
+          gain(0.0f),
+          offsetPicoTesla(offset),
+          referenceCycleCount(referenceCount),
+          scaleWithCycleCount(scale),
+          valid(isValid),
+          useFloatGain(false)
+    {
+    }
+
+    constexpr RM3100AxisCalibration(float floatGain, int32_t offset, uint16_t referenceCount, bool scale, bool isValid)
+        : gainNumerator(0),
+          gainDenominator(1u),
+          gain(floatGain),
+          offsetPicoTesla(offset),
+          referenceCycleCount(referenceCount),
+          scaleWithCycleCount(scale),
+          valid(isValid),
+          useFloatGain(true)
+    {
+    }
 };
 
 struct RM3100Calibration
@@ -225,18 +257,8 @@ public:
 
     void clearCalibration();
     void clearCalibration(Axis axis);
-    void setAxisCalibration(
-        Axis axis,
-    #if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
-        float gain,
-    #else
-        int32_t gainNumerator,
-        uint32_t gainDenominator,
-    #endif
-        int32_t offsetPicoTesla = 0,
-        uint16_t referenceCycleCount = 0,
-        bool scaleWithCycleCount = true,
-        bool valid = true);
+        void setAxisCalibration(Axis axis, int32_t gainNumerator, uint32_t gainDenominator, int32_t offsetPicoTesla = 0, uint16_t referenceCycleCount = 0, bool scaleWithCycleCount = true, bool valid = true);
+        void setAxisCalibration(Axis axis, float gain, int32_t offsetPicoTesla = 0, uint16_t referenceCycleCount = 0, bool scaleWithCycleCount = true, bool valid = true);
     void setCalibration(const RM3100Calibration &calibration);
     RM3100AxisCalibration axisCalibration(Axis axis) const;
     bool hasCalibration(Axis axis) const;

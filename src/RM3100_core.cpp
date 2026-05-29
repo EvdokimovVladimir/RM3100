@@ -18,16 +18,14 @@ RM3100Class::RM3100Class()
 
     for (uint8_t index = 0; index < 3; ++index)
     {
-    #if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
-        _calibration[index].gain = 0.0f;
-    #else
         _calibration[index].gainNumerator = 0;
         _calibration[index].gainDenominator = 1;
-    #endif
+        _calibration[index].gain = 0.0f;
         _calibration[index].offsetPicoTesla = 0;
         _calibration[index].referenceCycleCount = kDefaultCycleCount;
         _calibration[index].scaleWithCycleCount = true;
         _calibration[index].valid = false;
+        _calibration[index].useFloatGain = false;
     }
 }
 
@@ -347,42 +345,40 @@ void RM3100Class::clearCalibration()
 void RM3100Class::clearCalibration(Axis axis)
 {
     const uint8_t index = axisToIndex(axis);
-#if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
-    _calibration[index].gain = 0.0f;
-#else
     _calibration[index].gainNumerator = 0;
     _calibration[index].gainDenominator = 1;
-#endif
+    _calibration[index].gain = 0.0f;
     _calibration[index].offsetPicoTesla = 0;
     _calibration[index].referenceCycleCount = _cycleCounts[index];
     _calibration[index].scaleWithCycleCount = true;
     _calibration[index].valid = false;
+    _calibration[index].useFloatGain = false;
 }
 
-void RM3100Class::setAxisCalibration(
-    Axis axis,
-#if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
-    float gain,
-#else
-    int32_t gainNumerator,
-    uint32_t gainDenominator,
-#endif
-    int32_t offsetPicoTesla,
-    uint16_t referenceCycleCount,
-    bool scaleWithCycleCount,
-    bool valid)
+void RM3100Class::setAxisCalibration(Axis axis, int32_t gainNumerator, uint32_t gainDenominator, int32_t offsetPicoTesla, uint16_t referenceCycleCount, bool scaleWithCycleCount, bool valid)
 {
     const uint8_t index = axisToIndex(axis);
-#if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
-    _calibration[index].gain = gain;
-#else
     _calibration[index].gainNumerator = gainNumerator;
     _calibration[index].gainDenominator = (gainDenominator == 0u) ? 1u : gainDenominator;
-#endif
+    _calibration[index].gain = 0.0f;
     _calibration[index].offsetPicoTesla = offsetPicoTesla;
     _calibration[index].referenceCycleCount = (referenceCycleCount == 0u) ? _cycleCounts[index] : referenceCycleCount;
     _calibration[index].scaleWithCycleCount = scaleWithCycleCount;
     _calibration[index].valid = valid;
+    _calibration[index].useFloatGain = false;
+}
+
+void RM3100Class::setAxisCalibration(Axis axis, float gain, int32_t offsetPicoTesla, uint16_t referenceCycleCount, bool scaleWithCycleCount, bool valid)
+{
+    const uint8_t index = axisToIndex(axis);
+    _calibration[index].gainNumerator = 0;
+    _calibration[index].gainDenominator = 1u;
+    _calibration[index].gain = gain;
+    _calibration[index].offsetPicoTesla = offsetPicoTesla;
+    _calibration[index].referenceCycleCount = (referenceCycleCount == 0u) ? _cycleCounts[index] : referenceCycleCount;
+    _calibration[index].scaleWithCycleCount = scaleWithCycleCount;
+    _calibration[index].valid = valid;
+    _calibration[index].useFloatGain = true;
 }
 
 void RM3100Class::setCalibration(const RM3100Calibration &calibration)
@@ -412,17 +408,22 @@ int32_t RM3100Class::applyCalibration(Axis axis, int32_t rawCounts) const
         return 0;
     }
 
-#if RM3100_CALIBRATION == RM3100_CALIBRATION_FLOAT
-    float gain = calibration.gain;
-    if (calibration.scaleWithCycleCount)
+    if (calibration.useFloatGain)
     {
-        const uint16_t referenceCycleCount = (calibration.referenceCycleCount == 0u) ? _cycleCounts[index] : calibration.referenceCycleCount;
-        const uint16_t currentCycleCount = (_cycleCounts[index] == 0u) ? 1u : _cycleCounts[index];
-        gain *= static_cast<float>(referenceCycleCount) / static_cast<float>(currentCycleCount);
+        float gain = calibration.gain;
+        if (calibration.scaleWithCycleCount)
+        {
+            const uint16_t referenceCycleCount = (calibration.referenceCycleCount == 0u) ? _cycleCounts[index] : calibration.referenceCycleCount;
+            const uint16_t currentCycleCount = (_cycleCounts[index] == 0u) ? 1u : _cycleCounts[index];
+            gain *= static_cast<float>(referenceCycleCount) / static_cast<float>(currentCycleCount);
+        }
+
+        int64_t picoTesla = roundFloatToInt64(static_cast<float>(rawCounts) * gain);
+        picoTesla += calibration.offsetPicoTesla;
+
+        return clampInt64ToInt32(picoTesla);
     }
 
-    int64_t picoTesla = roundFloatToInt64(static_cast<float>(rawCounts) * gain);
-#else
     if (calibration.gainDenominator == 0u)
     {
         return 0;
@@ -440,7 +441,6 @@ int32_t RM3100Class::applyCalibration(Axis axis, int32_t rawCounts) const
     }
 
     int64_t picoTesla = divideRounded(static_cast<int64_t>(rawCounts) * numerator, denominator);
-#endif
     picoTesla += calibration.offsetPicoTesla;
 
     return clampInt64ToInt32(picoTesla);

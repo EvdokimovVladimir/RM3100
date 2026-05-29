@@ -146,10 +146,4 @@ const RM3100AxisCalibration axisCalibration = {
 
 Аналогично проверяются `examples/BasicI2C`, `examples/CalibrationI2C` и `examples/FullFeaturedDemo`.
 
-Для float-примеров используйте соответствующие скетчи `*Float`.
-
-При необходимости принудительно собрать всю библиотеку именно в float-режиме можно добавить глобальный флаг:
-
-```powershell
-& "C:\Program Files\Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe" compile --fqbn arduino:avr:nano --warnings all --build-property compiler.cpp.extra_flags="-DRM3100_CALIBRATION=RM3100_CALIBRATION_FLOAT" --library . examples/FullFeaturedDemoFloat
-```
+Для float-примеров используйте соответствующие скетчи `*Float`. Режим включается прямо в начале файла через `#define DRM3100_CALIBRATION RM3100_CALIBRATION_FLOAT`.
